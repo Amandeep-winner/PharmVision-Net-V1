@@ -1,0 +1,17 @@
+# Versions match the pinned install cell in Fine_Tuning_Model_Gamma.ipynb
+torch==2.1.0
+torchvision==0.16.0
+torchaudio==2.1.0
+transformers==4.35.2
+datasets==2.15.0
+accelerate==0.25.0
+bitsandbytes==0.41.2
+peft==0.7.1
+evaluate
+jiwer
+sentencepiece
+pillow
+# torch 2.1.0 is not compatible with numpy 2.x
+numpy<2
+# Used to download the Kaggle datasets
+kagglehub

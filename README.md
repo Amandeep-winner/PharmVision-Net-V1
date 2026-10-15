@@ -1,147 +1,162 @@
-# 🩺 Medical Prescription Analyzer
+# Medical Prescription Analyzer (Vaidya AI)
 
-An end-to-end **OCR pipeline for medical prescriptions**, powered by a **fine-tuned Donut (Document Understanding Transformer)** model.  
-This project extracts text from handwritten/typed prescriptions and makes it available for further analysis (e.g., medicine recognition, dosage extraction).
-
----
-
-## 🚀 Features
-
-- 📄 **OCR with Donut** — Fine-tuned Donut model on prescription dataset
-- 🧩 **Pipeline Integration** — Easily plug into existing medical text-processing workflows
-- 📊 **Evaluation** — Tracks WER (Word Error Rate) and training loss
-- 🔧 **Customizable** — Extendable to structured parsing (medicine, dosage, duration)
-- 💾 **Reusable Model** — Saved and reloadable with Hugging Face Transformers
+A deep-learning pipeline that reads prescription images and extracts the medical information in them.
+It combines OCR with a Donut (Document Understanding Transformer) model and biomedical named entity recognition (NER).
 
 ---
 
-## 📂 Project Structure
+## Problem
+
+Prescriptions, especially handwritten ones, are hard to read and slow to digitize.
+Misreading a medicine name or dosage is a patient safety risk.
+This project explores automating the first step: turning a prescription image into text and tagged medical entities.
+
+---
+
+## How It Works
 
 ```
-Medical-Prescription-Analyzer-/
-├── model_fine_tuning/          # Kaggle notebook for fine-tuning Donut
-│   └── fine_tuning_model_gamma.ipynb
-├── pipeline/                   # Pipeline notebook for inference & analysis
-│   └── prescription_pipeline.ipynb
-├── README.md                   # Project overview
-├── requirements.txt            # Dependencies
-├── LICENSE                     # MIT License
-└── .gitignore                  # Ignored files
+Prescription image
+        |
+        v
+Donut OCR (vision encoder-decoder, no separate text detection step)
+        |
+        v
+Raw text
+        |
+        v
+Biomedical NER (d4data/biomedical-ner-all)
+        |
+        v
+Tagged entities (medicines, dosages, and similar)
 ```
 
----
-
-## ⚙️ Installation
-
-1. **Clone the repo:**
-   ```bash
-   git clone https://github.com/SOHAM-3T/Medical-Prescription-Analyzer-.git
-   cd Medical-Prescription-Analyzer-
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+1. **OCR with Donut.**
+   Donut reads the image directly and generates text, so no separate text detection step is needed.
+2. **Biomedical NER.**
+   The OCR text is passed to a token classification model that tags medical entities.
+3. **Evaluation.**
+   The pipeline notebook compares the OCR output with a ground-truth text using `difflib`.
+   The fine-tuning notebook tracks training loss, validation loss and WER (word error rate).
 
 ---
 
-## 🏋️ Fine-Tuning (Optional)
+## Repository Contents
 
-To fine-tune Donut on your own dataset:
+| File | Purpose |
+|------|---------|
+| [Fine_Tuning_Model_Gamma.ipynb](Fine_Tuning_Model_Gamma.ipynb) | Fine-tunes `naver-clova-ix/donut-base` on the prescription dataset |
+| [Vaidya_AI_alpha.ipynb](Vaidya_AI_alpha.ipynb) | End-to-end pipeline: Donut OCR, then biomedical NER, then evaluation |
+| [dataSet.txt](dataSet.txt) | Links to the Kaggle datasets |
+| [requirements.txt](requirements.txt) | Python dependencies |
+| [LICENSE](LICENSE) | MIT License |
+
+---
+
+## Datasets
+
+Both datasets are hosted on Kaggle (see [dataSet.txt](dataSet.txt)):
+
+- [prescription-data-set](https://www.kaggle.com/datasets/soham3ripathy/prescription-data-set) - prescription images
+- [ground-truth-seed](https://www.kaggle.com/datasets/soham3ripathy/ground-truth-seed) - ground-truth text for the images
+
+---
+
+## Setup
+
+The notebooks are designed for Google Colab or Kaggle with a GPU runtime.
+Both open directly in Colab through the badge at the top of each notebook.
+
+To run locally instead:
+
+```bash
+git clone https://github.com/SOHAM-3T/Medical-Prescription-Analyzer-.git
+cd Medical-Prescription-Analyzer-
+pip install -r requirements.txt
+```
+
+The notebooks download the data with `kagglehub`, so you need to log in to Kaggle when prompted.
+Some data sources are private, so you may need access from the dataset owner.
+
+---
+
+## Usage
+
+### 1. Fine-tune Donut
+
+Open [Fine_Tuning_Model_Gamma.ipynb](Fine_Tuning_Model_Gamma.ipynb) and run the cells in order.
+Update `IMAGE_DIR` and `OUTPUT_MODEL_DIR` in the configuration cell to match your environment.
+
+Training setup:
+
+- Base model: `naver-clova-ix/donut-base`
+- Epochs: 10
+- Batch size: 1 (train and eval)
+- Max sequence length: 384
+- Metric: WER
+
+### 2. Run the pipeline
+
+Open [Vaidya_AI_alpha.ipynb](Vaidya_AI_alpha.ipynb) and set `TEST_IMAGE_PATH` and the ground-truth text in the last cell.
+Run all cells to see the OCR output, the NER tags and the comparison score.
+
+Note: the alpha pipeline currently loads `naver-clova-ix/donut-base-finetuned-cord-v2` for OCR.
+To use your own fine-tuned model, point it at your `donut-finetuned-prescription-ocr` output directory:
 
 ```python
 from transformers import DonutProcessor, VisionEncoderDecoderModel
-
-# Load pre-trained Donut
-processor = DonutProcessor.from_pretrained("naver-clova-ix/donut-base")
-model = VisionEncoderDecoderModel.from_pretrained("naver-clova-ix/donut-base")
-
-# Fine-tuning is implemented in model_fine_tuning/fine_tuning_model_gamma.ipynb
-```
-
----
-
-## 🔍 Inference Pipeline
-
-Example usage in your pipeline:
-
-```python
-from transformers import DonutProcessor, VisionEncoderDecoderModel
-from PIL import Image
-import torch
 
 MODEL_DIR = "path/to/donut-finetuned-prescription-ocr"
-
-# Load fine-tuned model
 processor = DonutProcessor.from_pretrained(MODEL_DIR)
-model = VisionEncoderDecoderModel.from_pretrained(MODEL_DIR).to("cuda" if torch.cuda.is_available() else "cpu")
-
-# OCR function
-def ocr_prescription(img_path: str):
-    image = Image.open(img_path).convert("RGB")
-    pixel_values = processor(image, return_tensors="pt").pixel_values.to(model.device)
-    outputs = model.generate(pixel_values, max_length=512)
-    return processor.batch_decode(outputs, skip_special_tokens=True)[0]
-
-print(ocr_prescription("sample_prescription.jpg"))
+model = VisionEncoderDecoderModel.from_pretrained(MODEL_DIR)
 ```
 
 ---
 
-## 📊 Results
+## Results
 
-| Metric | Value (10 Epochs) |
+| Metric | Value (10 epochs) |
 |--------|-------------------|
-| Training Loss | ~4.4 |
-| Validation Loss | ~4.4 |
-| WER | ~0.87 → 1.15 (small dataset, unstable) |
+| Training loss | ~4.4 |
+| Validation loss | ~4.4 |
+| WER | ~0.87 to 1.15 (unstable) |
 
-> **Note:** With a larger dataset and more training epochs, performance will improve significantly.
-
----
-
-## 📦 Model Access
-
-The fine-tuned model is available in:
-- **Kaggle notebook outputs:** `soham3ripathy/fine-tuning-model-gamma`
-- Can be uploaded as a Kaggle dataset or GitHub release
+The dataset is small, so these results are a proof of concept and not production quality.
+More data and more training are expected to improve them significantly.
 
 ---
 
-## 🔮 Future Work
+## Future Work
 
-- [ ] Expand dataset for better generalization
-- [ ] Add structured JSON parsing (medicine, dosage, duration)
-- [ ] Deploy as an API (Flask/FastAPI)
-- [ ] Improve model performance with more training data
-- [ ] Add support for multiple languages
+- [ ] Expand the dataset for better generalization
+- [ ] Use the fine-tuned model inside the pipeline notebook
+- [ ] Output structured JSON (medicine, dosage, duration)
+- [ ] Deploy as an API (Flask or FastAPI)
+- [ ] Support multiple languages
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Pull requests are welcome! For major changes, please open an issue first to discuss what you'd like to improve.
+Pull requests are welcome.
+For major changes, please open an issue first to discuss what you would like to change.
 
 1. Fork the project
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes (`git commit -m "feat: add my feature"`)
+4. Push the branch (`git push origin feature/my-feature`)
 5. Open a Pull Request
 
 ---
 
-## 📜 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
-## 👥 Contributors
+## Contributors
 
-Thanks to these amazing people who have contributed to this project:
-
-<!-- Add contributors here -->
 <table>
   <tr>
     <td align="center">
@@ -150,32 +165,28 @@ Thanks to these amazing people who have contributed to this project:
         <br />
         <sub><b>Soham Tripathy</b></sub>
       </a>
-      <br />
     </td>
-      <td align="center">
+    <td align="center">
       <a href="https://github.com/Ajay-Kumar-Prasad">
-        <img src="https://github.com/Ajay-Kumar-Prasad.png" width="100px;" alt="SOHAM-3T"/>
+        <img src="https://github.com/Ajay-Kumar-Prasad.png" width="100px;" alt="Ajay-Kumar-Prasad"/>
         <br />
         <sub><b>Ajay Kumar Prasad</b></sub>
       </a>
-      <br />
     </td>
-    <!-- Add more contributors as needed -->
-      <td align="center">
+    <td align="center">
       <a href="https://github.com/SaiPrithvi1278">
-        <img src="https://github.com/SaiPrithvi1278.png" width="100px;" alt="SOHAM-3T"/>
+        <img src="https://github.com/SaiPrithvi1278.png" width="100px;" alt="SaiPrithvi1278"/>
         <br />
         <sub><b>Sai Prithvi</b></sub>
       </a>
-      <br />
     </td>
   </tr>
 </table>
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Naver Clova IX](https://github.com/clovaai/donut) for the original Donut model
 - Hugging Face for the Transformers library
-- The medical community for inspiring this healthcare technology solution
+- [d4data/biomedical-ner-all](https://huggingface.co/d4data/biomedical-ner-all) for the biomedical NER model
